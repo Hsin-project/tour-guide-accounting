@@ -635,31 +635,51 @@ function deleteTour() {
   load(); tours = tours.filter(x => x.id !== currentId); save(); showView('list');
 }
 
+function getFilteredTours() {
+  const filterYear  = document.getElementById('filter-year')?.value || '';
+  const filterMonth = document.getElementById('filter-month')?.value || '';
+  let filtered = [...tours];
+  if (filterYear)  filtered = filtered.filter(t => t.date && t.date.slice(0,4) === filterYear);
+  if (filterMonth) filtered = filtered.filter(t => t.date && t.date.slice(5,7) === filterMonth);
+  return { filtered: filtered.sort((a,b) => a.date.localeCompare(b.date)), filterYear, filterMonth };
+}
+
+function getFilterLabel(filterYear, filterMonth) {
+  if (filterYear && filterMonth) return `${filterYear}年${parseInt(filterMonth)}月`;
+  if (filterYear) return `${filterYear}年`;
+  if (filterMonth) return `${parseInt(filterMonth)}月`;
+  return '全部';
+}
+
 function exportExcel() {
   load();
   if (!tours.length) { alert('目前沒有資料可以匯出'); return; }
-  const sorted = [...tours].sort((a,b) => a.date.localeCompare(b.date));
+  const { filtered, filterYear, filterMonth } = getFilteredTours();
+  if (!filtered.length) { alert('目前篩選條件無資料可匯出'); return; }
+  const label = getFilterLabel(filterYear, filterMonth);
   const rows = [['帶團日期','團名','團員人數','D 小費(TWD)','E 車販業績(JPY)','F 進店業績(JPY)','G 補藥(JPY)','H 茶水費(JPY)','I 匯率','J 額外收入(TWD)','K 總收入(TWD)','L 備註']];
-  sorted.forEach(t => {
+  filtered.forEach(t => {
     rows.push([t.date||'', t.name||'', +t.pax||0, +t.tips||0, +t.sales||0, +t.shop||0, +t.meds||0, +t.water||0, +t.rate||0.21, +t.extra||0, Math.round(calc(t)), t.note||'']);
   });
-  const total = tours.reduce((s,t)=>s+calc(t),0);
+  const total = filtered.reduce((s,t)=>s+calc(t),0);
   rows.push(['','','合計','','','','','','','',Math.round(total),'']);
   let csv = '\uFEFF';
   rows.forEach(r => { csv += r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',') + '\n'; });
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = '帶團記帳_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.href = url; a.download = `帶團記帳_${label}_${new Date().toISOString().slice(0,10)}.csv`;
   a.click(); URL.revokeObjectURL(url);
 }
 
 function exportPDF() {
   load();
   if (!tours.length) { alert('目前沒有資料可以匯出'); return; }
-  const sorted = [...tours].sort((a,b) => a.date.localeCompare(b.date));
-  const total = tours.reduce((s,t)=>s+calc(t),0);
-  const avg = total / tours.length;
+  const { filtered, filterYear, filterMonth } = getFilteredTours();
+  if (!filtered.length) { alert('目前篩選條件無資料可匯出'); return; }
+  const label = getFilterLabel(filterYear, filterMonth);
+  const total = filtered.reduce((s,t)=>s+calc(t),0);
+  const avg = total / filtered.length;
   const today = new Date().toLocaleDateString('zh-TW');
   let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
     body{font-family:'Microsoft JhengHei','PingFang TC',sans-serif;font-size:12px;color:#1a1916;padding:32px}
@@ -675,14 +695,14 @@ function exportPDF() {
     .num{text-align:right;font-family:monospace}
     @media print{body{padding:16px}}
   </style></head><body>
-  <h1>帶團記帳報表</h1>
-  <div class="sub">匯出日期：${today}　·　共 ${tours.length} 團</div>
+  <h1>帶團記帳報表　${label}</h1>
+  <div class="sub">匯出日期：${today}　·　共 ${filtered.length} 團</div>
   <div class="stat">
     <div class="stat-item"><div class="sl">總收入</div><div class="sv">$${Math.round(total).toLocaleString()} TWD</div></div>
     <div class="stat-item"><div class="sl">平均每團</div><div class="sv">$${Math.round(avg).toLocaleString()} TWD</div></div>
   </div>
   <table><tr><th>日期</th><th>團名</th><th>人數</th><th class="num">D小費</th><th class="num">E車販</th><th class="num">F進店</th><th class="num">G補藥</th><th class="num">H茶水</th><th class="num">J額外</th><th class="num">匯率</th><th class="num">K總收入</th><th>備註</th></tr>`;
-  sorted.forEach(t => {
+  filtered.forEach(t => {
     html += `<tr><td>${t.date||'—'}</td><td>${t.name||'—'}</td><td class="num">${+t.pax||0}</td><td class="num">${(+t.tips||0).toLocaleString()}</td><td class="num">¥${(+t.sales||0).toLocaleString()}</td><td class="num">¥${(+t.shop||0).toLocaleString()}</td><td class="num">¥${(+t.meds||0).toLocaleString()}</td><td class="num">¥${(+t.water||0).toLocaleString()}</td><td class="num">${(+t.extra||0).toLocaleString()}</td><td class="num">${parseFloat(t.rate||0.21).toFixed(3)}</td><td class="num">$${Math.round(calc(t)).toLocaleString()}</td><td>${t.note||''}</td></tr>`;
   });
   html += `<tr class="total-row"><td colspan="10">合計</td><td class="num">$${Math.round(total).toLocaleString()}</td><td></td></tr></table></body></html>`;
