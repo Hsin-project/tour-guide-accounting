@@ -505,16 +505,20 @@ function showView(v, id) {
   if (v === 'detail') { currentId = id; renderDetail(id); ta.innerHTML = ''; }
 }
 
+let yearFilterReady = false;
+
 function initYearFilter() {
   const years = [...new Set(tours.map(t => t.date ? t.date.slice(0,4) : '').filter(Boolean))].sort((a,b) => b-a);
   const sel = document.getElementById('filter-year');
   const curVal = sel.value;
   sel.innerHTML = '<option value="">全部年份</option>' + years.map(y => `<option value="${y}">${y}年</option>`).join('');
-  // 預設選今年
-  const thisYear = new Date().getFullYear().toString();
-  if (!curVal) {
+  if (!yearFilterReady) {
+    // 第一次：預設今年
+    const thisYear = new Date().getFullYear().toString();
     sel.value = years.includes(thisYear) ? thisYear : (years[0] || '');
+    yearFilterReady = true;
   } else {
+    // 之後：保留使用者選的值
     sel.value = curVal;
   }
 }
