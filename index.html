@@ -243,6 +243,29 @@ body {
   .result-box .rv { font-size: 26px; }
 }
 
+/* ── FILTER BAR ── */
+.filter-bar {
+  display: flex; gap: 8px; align-items: center;
+  margin-bottom: 16px; flex-wrap: wrap;
+}
+.filter-bar select {
+  padding: 7px 12px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); font-family: var(--sans); font-size: 13px;
+  cursor: pointer;
+}
+.filter-bar select:focus { outline: none; border-color: var(--accent); }
+.filter-reset {
+  font-size: 12px; color: var(--text3); cursor: pointer;
+  background: none; border: none; font-family: var(--sans);
+  padding: 4px 8px; border-radius: var(--radius);
+}
+.filter-reset:hover { color: var(--accent); background: var(--accent-light); }
+.filter-result {
+  font-size: 12px; color: var(--text3); margin-left: auto;
+  font-family: var(--mono);
+}
+
 /* ── ANIMATIONS ── */
 @keyframes fadeIn { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform: translateY(0); } }
 .card, .stat-box, .tour-item { animation: fadeIn 0.2s ease both; }
@@ -262,13 +285,27 @@ body {
   <div id="view-list">
     <div id="stat-summary" style="display:none">
       <div class="stat-row">
-        <div class="stat-box"><div class="sl">總團次</div><div class="sv" id="stat-count">0</div></div>
-        <div class="stat-box"><div class="sl">總收入（TWD）</div><div class="sv" id="stat-total">$0</div></div>
+        <div class="stat-box"><div class="sl">篩選團次</div><div class="sv" id="stat-count">0</div></div>
+        <div class="stat-box"><div class="sl">篩選收入（TWD）</div><div class="sv" id="stat-total">$0</div></div>
         <div class="stat-box"><div class="sl">平均每團</div><div class="sv" id="stat-avg">$0</div></div>
       </div>
     </div>
+    <div class="filter-bar">
+      <select id="filter-year" onchange="renderList()"></select>
+      <select id="filter-month" onchange="renderList()">
+        <option value="">全部月份</option>
+        <option value="01">1月</option><option value="02">2月</option>
+        <option value="03">3月</option><option value="04">4月</option>
+        <option value="05">5月</option><option value="06">6月</option>
+        <option value="07">7月</option><option value="08">8月</option>
+        <option value="09">9月</option><option value="10">10月</option>
+        <option value="11">11月</option><option value="12">12月</option>
+      </select>
+      <button class="filter-reset" onclick="resetFilter()">重設</button>
+      <span class="filter-result" id="filter-result"></span>
+    </div>
     <div class="card">
-      <div class="card-label">所有團次</div>
+      <div class="card-label" id="list-label">所有團次</div>
       <div id="tour-list">
         <div class="empty-state">
           <div class="empty-icon">✈️</div>
@@ -468,6 +505,29 @@ function showView(v, id) {
   if (v === 'detail') { currentId = id; renderDetail(id); ta.innerHTML = ''; }
 }
 
+function initYearFilter() {
+  const years = [...new Set(tours.map(t => t.date ? t.date.slice(0,4) : '').filter(Boolean))].sort((a,b) => b-a);
+  const sel = document.getElementById('filter-year');
+  const curVal = sel.value;
+  sel.innerHTML = '<option value="">全部年份</option>' + years.map(y => `<option value="${y}">${y}年</option>`).join('');
+  // 預設選今年
+  const thisYear = new Date().getFullYear().toString();
+  if (!curVal) {
+    sel.value = years.includes(thisYear) ? thisYear : (years[0] || '');
+  } else {
+    sel.value = curVal;
+  }
+}
+
+function resetFilter() {
+  const thisYear = new Date().getFullYear().toString();
+  const sel = document.getElementById('filter-year');
+  const years = [...sel.options].map(o => o.value).filter(Boolean);
+  sel.value = years.includes(thisYear) ? thisYear : '';
+  document.getElementById('filter-month').value = '';
+  renderList();
+}
+
 function renderList() {
   const el = document.getElementById('tour-list');
   const ss = document.getElementById('stat-summary');
@@ -475,12 +535,33 @@ function renderList() {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">✈️</div>還沒有紀錄<br>點右上角「新增團次」開始</div>';
     ss.style.display = 'none'; return;
   }
-  ss.style.display = 'block';
-  const sorted = [...tours].sort((a,b) => b.date.localeCompare(a.date));
-  const totalIncome = tours.reduce((s,t) => s + calc(t), 0);
-  document.getElementById('stat-count').textContent = tours.length;
+  initYearFilter();
+  const filterYear  = document.getElementById('filter-year').value;
+  const filterMonth = document.getElementById('filter-month').value;
+  let filtered = [...tours];
+  if (filterYear)  filtered = filtered.filter(t => t.date && t.date.slice(0,4) === filterYear);
+  if (filterMonth) filtered = filtered.filter(t => t.date && t.date.slice(5,7) === filterMonth);
+  const sorted = filtered.sort((a,b) => b.date.localeCompare(a.date));
+  // 統計
+  ss.style.display = filtered.length ? 'block' : 'none';
+  const totalIncome = filtered.reduce((s,t) => s + calc(t), 0);
+  document.getElementById('stat-count').textContent = filtered.length + ' 團';
   document.getElementById('stat-total').textContent = fmt(totalIncome);
-  document.getElementById('stat-avg').textContent = fmt(totalIncome / tours.length);
+  document.getElementById('stat-avg').textContent = filtered.length ? fmt(totalIncome / filtered.length) : '$0';
+  // 標題
+  let label = '所有團次';
+  if (filterYear && filterMonth) label = `${filterYear} 年 ${parseInt(filterMonth)} 月`;
+  else if (filterYear) label = `${filterYear} 年`;
+  else if (filterMonth) label = `${parseInt(filterMonth)} 月`;
+  document.getElementById('list-label').textContent = label;
+  // 篩選結果提示
+  const fr = document.getElementById('filter-result');
+  if (filterYear || filterMonth) fr.textContent = `共 ${tours.length} 筆中顯示 ${filtered.length} 筆`;
+  else fr.textContent = '';
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div>此條件無紀錄</div>';
+    return;
+  }
   el.innerHTML = sorted.map(t => `
     <div class="tour-item" onclick="showView('detail','${t.id}')">
       <div class="ti-left">
